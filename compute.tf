@@ -28,13 +28,23 @@ resource "aws_instance" "web" {
 
     cat <<HTML > /var/www/html/index.html
     <!DOCTYPE html>
-    <html>
+    <html lang="ja">
       <head>
-        <title>AWS Terraform Portfolio</title>
+        <meta charset="UTF-8">
+        <title>Web Server Test</title>
       </head>
       <body>
-        <h1>AWS Terraform Portfolio</h1>
-        <p>Web server is running successfully.</p>
+        <h1>Web Server Test</h1>
+        <p>Apache is running on EC2.</p>
+
+        <h2>Environment</h2>
+        <ul>
+          <li>AWS: ap-northeast-1</li>
+          <li>OS: Amazon Linux 2023</li>
+          <li>Web Server: Apache</li>
+        </ul>
+
+        <p>ALB -> EC2 connection OK</p>
       </body>
     </html>
     HTML
@@ -44,4 +54,3 @@ resource "aws_instance" "web" {
     Name = "tk-test-web"
   }
 }
-
