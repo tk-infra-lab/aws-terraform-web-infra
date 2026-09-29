@@ -49,3 +49,21 @@ resource "aws_security_group" "ec2" {
     Name = "tk-test-ec2-sg"
   }
 }
+
+resource "aws_security_group" "rds" {
+  name        = "tk-test-rds-sg"
+  description = "Security group for RDS"
+  vpc_id      = aws_vpc.test.id
+
+  ingress {
+    description     = "Allow MySQL from EC2"
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ec2.id]
+  }
+
+  tags = {
+    Name = "tk-test-rds-sg"
+  }
+}
