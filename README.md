@@ -4,9 +4,9 @@ Terraformを使用したAWS Webインフラストラクチャの構築ポート�
 
 ## 概要
 
-AWSのネットワーク・Web・データベース構成をInfrastructure as Code（IaC）として実装。
+AWSのネットワーク・Web・データベース・監視構成をInfrastructure as Code（IaC）として実装。
 
-Terraformによるインフラ構築に加え、S3 Remote BackendによるState管理、GitHub ActionsによるTerraform CI、OIDCを利用したAWS認証を実装。
+Terraformによるインフラ構築に加え、S3 Remote BackendによるState管理、GitHub ActionsによるTerraform CI、OIDCを利用したAWS認証、CloudWatchによる監視を実装。
 
 ## 構成
 
@@ -22,6 +22,7 @@ Terraformによるインフラ構築に加え、S3 Remote BackendによるState�
 - DB Subnet Group
 - Security Group
 - Apache HTTP Server
+- CloudWatch Alarm
 - S3 Remote Backend
 - GitHub Actions
 - GitHub OIDC / IAM Role
@@ -70,10 +71,11 @@ RDSのSecurity Groupでは、EC2のSecurity GroupからのMySQL（TCP/3306）の
 
 Terraform StateはS3 Remote Backendで管理。
 
+```text
 S3 Bucket
 └── portfolio/
     └── terraform.tfstate
-
+```
 
 TerraformのState Lockを有効化し、複数のTerraform実行によるStateの競合を防止。
 
@@ -100,6 +102,61 @@ AWSアクセスキーをGitHub Secretsへ長期保存せず、GitHub Actionsか�
 CI用IAM RoleはAWSリソースに対する読み取り権限を基本とし、Terraform State Lockに必要なS3オブジェクトのみ書き込み・削除を許可。
 
 `terraform apply` はCIの対象外とし、意図しないインフラ変更を防止。
+
+## CloudWatchによる監視
+
+ALB Target Groupの `UnHealthyHostCount` をCloudWatch Alarmで監視。
+
+Target Group内にUnhealthyなターゲットが発生した場合に異常を検知する構成をTerraformで実装。
+
+### 監視設定
+
+- Namespace: AWS/ApplicationELB
+- Metric: UnHealthyHostCount
+- Period: 60秒
+- Evaluation Periods: 2
+- Threshold: 0
+- Condition: UnHealthyHostCount > 0
+
+### 障害・復旧試験
+
+監視の動作確認として、EC2 Security GroupのALBからのHTTP（TCP/80）許可ルールを一時的に削除。
+
+ALBからEC2へのヘルスチェックを意図的に失敗させ、以下を確認。
+
+1. ALB Target Groupのターゲットが `Healthy` から `Unhealthy` に変化
+2. `UnHealthyHostCount` が 0 から 1 に変化
+3. CloudWatch Alarmが `OK` から `ALARM` に変化
+
+その後 `terraform plan` を実行し、AWS上で手動変更したSecurity GroupとTerraformコードとの差分（drift）を検出。
+
+`terraform apply` によってSecurity GroupをTerraformの定義状態へ復旧し、Target Groupが `Healthy`、CloudWatch Alarmが `OK` に戻ることを確認。
+
+```text
+Normal
+  ↓
+Security Group rule removed
+  ↓
+ALB Health Check timeout
+  ↓
+Target: Unhealthy
+  ↓
+UnHealthyHostCount = 1
+  ↓
+CloudWatch Alarm: ALARM
+  ↓
+terraform plan (drift detection)
+  ↓
+terraform apply
+  ↓
+Target: Healthy
+  ↓
+CloudWatch Alarm: OK
+```
+
+### CloudWatch Alarm 動作確認
+
+![CloudWatch Alarm Test](cloudwatch-alarm-test.png)
 
 ## 動作確認
 
@@ -142,5 +199,4 @@ RDSは検証用途のためSingle-AZ構成を採用。
 - Auto ScalingによるWebサーバーの冗長化
 - RDS Multi-AZ構成
 - HTTPS（ACM）の導入
-- CloudWatchによる監視
 - Terraform Moduleによるコードの再利用
