@@ -5,10 +5,7 @@ resource "aws_lb" "web" {
 
   security_groups = [aws_security_group.alb.id]
 
-  subnets = [
-    aws_subnet.public_a.id,
-    aws_subnet.public_c.id
-  ]
+  subnets = module.network.public_subnet_ids
 
   tags = {
     Name = "tk-test-alb"
@@ -19,7 +16,7 @@ resource "aws_lb_target_group" "web" {
   name     = "tk-test-web-tg"
   port     = 80
   protocol = "HTTP"
-  vpc_id   = aws_vpc.test.id
+  vpc_id   = module.network.vpc_id
 
   health_check {
     path                = "/"
