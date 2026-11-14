@@ -1,7 +1,7 @@
 resource "aws_security_group" "alb" {
   name        = "tk-test-alb-sg"
   description = "Security group for ALB"
-  vpc_id      = aws_vpc.test.id
+  vpc_id      = module.network.vpc_id
 
   ingress {
     description = "Allow HTTP from Internet"
@@ -27,7 +27,7 @@ resource "aws_security_group" "alb" {
 resource "aws_security_group" "ec2" {
   name        = "tk-test-ec2-sg"
   description = "Security group for EC2"
-  vpc_id      = aws_vpc.test.id
+  vpc_id      = module.network.vpc_id
 
   ingress {
     description     = "Allow HTTP from ALB"
@@ -53,7 +53,7 @@ resource "aws_security_group" "ec2" {
 resource "aws_security_group" "rds" {
   name        = "tk-test-rds-sg"
   description = "Security group for RDS"
-  vpc_id      = aws_vpc.test.id
+  vpc_id      = module.network.vpc_id
 
   ingress {
     description     = "Allow MySQL from EC2"
