@@ -67,6 +67,36 @@ RDSのSecurity Groupでは、EC2のSecurity GroupからのMySQL（TCP/3306）の
 
 インターネットからRDSへの直接アクセスを許可しない構成。
 
+## Terraform module
+
+ネットワーク関連のリソースを modules/network/ に分離し、ルートモジュールから呼び出す構成に変更。
+
+VPC、Subnet、Internet Gateway、Route TableなどをNetwork Module内で管理。
+
+### ディレクトリ構成
+
+```text
+aws-terraform-web-infra/
+├── main.tf
+├── ALB.tf
+├── compute.tf
+├── database.tf
+├── SecurityGroup.tf
+└── modules/
+    └── network/
+        ├── main.tf
+        └── output.tf
+```
+
+### 検証
+
+作業ブランチで変更を行い、Pull Requestを作成。
+
+GitHub Actionsによる terraform fmt -check、terraform validate、terraform plan のチェックが成功したことを確認してmainへマージ。
+
+今回のモジュール化後はAWSリソースの再作成を行っていないため、実環境での動作確認は未実施。
+
+
 ## Terraform State管理
 
 Terraform StateはS3 Remote Backendで管理。
@@ -192,6 +222,56 @@ EC2にはPublic IPv4アドレスを付与する一方、Security Groupによっ�
 
 RDSは検証用途のためSingle-AZ構成を採用。
 
+## 工夫した点
+
+### 1. Security Groupによる通信制御
+
+ALB、EC2、RDS間の通信を必要なポートに限定。
+
+EC2とRDSのSecurity Groupでは、IPアドレスではなく通信元のSecurity Groupを指定し、リソースのIPアドレスが変わっても設定変更が不要な構成にした。
+
+### 2. 検証コストを考慮した構成
+
+NAT Gatewayは使用せず、EC2をPublic Subnetに配置。
+
+EC2へのHTTP通信はALB経由のみに制限し、コストを抑えながらSecurity Groupによる通信制御を検証できる構成にした。
+
+RDSも検証用途のためSingle-AZ構成とした。
+
+### 3. 障害発生から復旧までの検証
+
+ALBの UnHealthyHostCount を監視し、ターゲットの異常を検知するCloudWatch Alarmを設定。
+
+当初はEC2を停止して障害を再現したが、想定どおりにアラームが発報しなかった。
+
+EC2自体を停止すると、ALBのターゲットが unused として扱われる場合があり、UnHealthyHostCount が期待どおり増加しないことがあると分かった。
+
+そこで、EC2を起動したままSecurity GroupのHTTP許可ルールを削除し、ALBのヘルスチェックを失敗させる方法に変更。
+
+結果として、ターゲットが Unhealthy になり、CloudWatch Alarmが ALARM に遷移することを確認した。
+
+その後、terraform plan でSecurity Groupの設定差分を検出し、terraform apply で元の構成へ復旧するところまで検証した。
+
+### 4. GitHub Actionsによる自動チェック
+
+Terraformコードの変更時に、書式確認、構文検証、変更内容の確認を自動実行するようにした。
+
+AWS認証にはOIDCを使用し、アクセスキーをGitHubに保存しない構成にした。
+
+また、CIでは `terraform apply` を実行せず、意図しないリソース変更を防ぐようにした。
+
+### 5. Terraform Stateの管理
+
+Terraform StateをS3で管理し、State Lockを有効化。
+
+複数の環境からTerraformを実行する場合でも、同時更新による競合を防げるようにした。
+
+### 6. ネットワーク部分のモジュール化
+
+VPCやSubnet、Route TableなどをNetwork Moduleとして分離。
+
+VPC IDやSubnet IDをoutputで渡すことで、ALBやEC2、RDSなどからモジュール内のリソースを直接参照しない構成にした。
+
 ## 今後の課題
 
 - EC2のPrivate Subnetへの配置
@@ -199,4 +279,4 @@ RDSは検証用途のためSingle-AZ構成を採用。
 - Auto ScalingによるWebサーバーの冗長化
 - RDS Multi-AZ構成
 - HTTPS（ACM）の導入
-- Terraform Moduleによるコードの再利用
+- ALB・EC2・RDSなどのモジュール化
